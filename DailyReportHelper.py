@@ -25,6 +25,7 @@ YOURSELF = "filehelper"
 # 时间解析
 time = [int(num) for num in NOT_EARLY_BEFORE.split(":")]
 
+
 # Login
 itchat.auto_login(enableCmdQR=2, hotReload=True, statusStorageDir='itchat.pkl')
 
@@ -105,7 +106,11 @@ def upload_files_when_prompted(msg):
             itchat.send('未找到目标群聊，请检查程序问题', YOURSELF)
             win32api.MessageBox(0, "未找到目标群聊，请检查程序问题", "每日汇报小助手提醒", win32con.MB_OK)
     else:
-        prompt = "当前时间%s:%s未达到设定时间%s，暂不发送今日汇报" % (str(current_time[0]), str(current_time[1]), NOT_EARLY_BEFORE)
+        prompt = "当前时间%s:%s未达到设定时间%s，暂不发送今日汇报" % (
+            str(current_time[0]) if len(str(current_time[0])) == 2 else ("0" + str(current_time[0])),
+            str(current_time[1]) if len(str(current_time[1])) == 2 else ("0" + str(current_time[1])),
+            NOT_EARLY_BEFORE
+        )
         itchat.send(prompt, YOURSELF)
         win32api.MessageBox(0, prompt, "每日汇报小助手提醒", win32con.MB_OK)
 
