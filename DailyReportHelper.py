@@ -75,8 +75,8 @@ def send_file(target_group_user_name, working_mode):
         test = open(path)
         test.close()
         itchat.send('@fil@%s' % path, target_group_user_name)
-        itchat.send('已将文件发送到指定的群', YOURSELF)
-        win32api.MessageBox(0, "已将文件发送到指定的群", "每日汇报小助手-发送成功", win32con.MB_OK)
+        itchat.send("已将文件发送到指定的群：%s" % TARGET_GROUP, YOURSELF)
+        win32api.MessageBox(0, "已将文件发送到指定的群：%s" % TARGET_GROUP, "每日汇报小助手-发送成功", win32con.MB_OK)
     except FileNotFoundError:
         image_path = PROMPT_MYSELF if (working_mode == "myself") else PROMPT_OTHERS
         itchat.send('@img@%s' % image_path, YOURSELF)
