@@ -1,4 +1,5 @@
 from datetime import datetime
+import yaml
 import itchat
 import pytz
 import win32api
@@ -7,20 +8,26 @@ from itchat.content import TEXT, ATTACHMENT
 
 # CONSTS
 # 配置文件常量
-# 放置每日汇报的文件夹
-DAILY_REPORT_FOLDER = r'E:\Files and Documents\文档\硕士研究生文档\每日汇报\导出的PDF文档'
-# 目标群聊的名称
-TARGET_GROUP = "文件暂存群"
-# 通过被动触发方式发送日报，不得早于此时间
-NOT_EARLY_BEFORE = "20:30"
+# 配置文件的路径
+# TODO: 重构所有的绝对路径
+CONFIG_PATH = r'G:\DailyReportHelper\config.yml'
+
+with open(CONFIG_PATH, 'r', encoding='utf-8') as config_file:
+    config = yaml.load(config_file, Loader=yaml.FullLoader)
+    DAILY_REPORT_FOLDER = config["DAILY_REPORT_FOLDER"]
+    TARGET_GROUP = config["TARGET_GROUP"]
+    NOT_EARLY_BEFORE = config["NOT_EARLY_BEFORE"]
+
 
 # 程序常量
+# TODO: 重构所有的绝对路径
 # 主动提交作业时，如果还没有写作业，那么发这张图作为提示
 PROMPT_MYSELF = r'G:\DailyReportHelper\prompt_myself.png'
 # 其他同学提交作业时，如果还没有写作业，那么发这张图作为提示
 PROMPT_OTHERS = r'G:\DailyReportHelper\prompt_others.png'
 # 将微信“文件传输助手”的 ID 写成字面常量
 YOURSELF = "filehelper"
+
 
 # 时间解析
 time = [int(num) for num in NOT_EARLY_BEFORE.split(":")]

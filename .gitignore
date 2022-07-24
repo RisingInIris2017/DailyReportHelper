@@ -130,3 +130,5 @@ dmypy.json
 
 # Local Login Info
 /itchat.pkl
+# Local Config
+/config.yml
