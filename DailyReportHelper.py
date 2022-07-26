@@ -1,15 +1,15 @@
 from datetime import datetime
 from datetime import timedelta
-import yaml
+from yaml import load, FullLoader
 import itchat
-import pytz
+from pytz import timezone
 from os.path import abspath
 from sys import exit
-import win32api
-import win32con
+from win32api import MessageBox
+from win32con import MB_OK
 from itchat.content import TEXT, ATTACHMENT
 from time import sleep
-from http.client import RemoteDisconnected
+
 
 # CONSTS
 # 配置文件的路径
@@ -27,31 +27,43 @@ YOURSELF = "filehelper"
 HOURS = 3600.0
 
 
-# 专门用于发送提示的函数
-def hint(text: str, msgbox_title: str):
-    print(msgbox_title + ": " + text)
-    itchat.send(text, YOURSELF)
-    win32api.MessageBox(0, text, msgbox_title, win32con.MB_OK)
-
-
 # 读取配置文件
+# 配置文件初始值
+config: dict = {}
+DAILY_REPORT_FOLDER = TARGET_GROUP = NOT_EARLY_BEFORE = SLEEP_HOURS = ""
 try:
     config_file = open(CONFIG_PATH, 'r', encoding='utf-8')
-    config = yaml.load(config_file, Loader=yaml.FullLoader)
+    config = load(config_file, Loader=FullLoader)
     DAILY_REPORT_FOLDER = config["DAILY_REPORT_FOLDER"]
     TARGET_GROUP = config["TARGET_GROUP"]
     NOT_EARLY_BEFORE = config["NOT_EARLY_BEFORE"]
-    # 将字符串值表示的时间解析为整数列表
-    time = [int(num) for num in NOT_EARLY_BEFORE.split(":")]
-except FileNotFoundError:
+    SLEEP_HOURS = config["SLEEP_HOURS"]
+except (KeyError, FileNotFoundError):
     default_config = open(CONFIG_PATH, 'w', encoding='utf-8')
-    default_config.write("""
-DAILY_REPORT_FOLDER: '填入你放置这些文件的文件夹绝对路径'\n
-TARGET_GROUP: '要发送文件的群聊名称'\n
-NOT_EARLY_BEFORE: '24小时格式的时间，被动发送文件不会早于这个时间'\n
+    default_config.write("""DAILY_REPORT_FOLDER: '填入你放置这些文件的文件夹绝对路径'
+TARGET_GROUP: '要发送文件的群聊名称'
+NOT_EARLY_BEFORE: '24小时格式的时间，被动发送文件不会早于这个时间'
+SLEEP_HOURS: '整数，小助手被触发提交作业后冷却的小时数'
 """)
-    hint("默认config.yml配置文件已生成，\n请按照其中提示文字填写后使用")
-    itchat.logout()
+    print("默认config.yml配置文件已生成，\n请按照其中提示文字填写后使用")
+    exit()
+# 配置文件解析逻辑
+# 解析NOT_EARLY_BEFORE
+parsed_time = []
+try:
+    # 将字符串值表示的时间解析为整数列表
+    parsed_time = [int(num) for num in NOT_EARLY_BEFORE.split(":")]
+except ValueError:
+    print("NOT_EARLY_BEFORE参数应为24小时制、冒号分隔的时间，\n例如20:30。请修改配置后再使用")
+    exit()
+if len(parsed_time) > 2 or parsed_time[0] < 0 or parsed_time[0] > 23 or parsed_time[1] < 0 or parsed_time[1] > 59:
+    print("NOT_EARLY_BEFORE参数应为24小时制、冒号分隔的时间，\n例如20:30。请修改配置后再使用")
+    exit()
+# 解析SLEEP_HOURS
+try:
+    sleep_hours = int(SLEEP_HOURS)
+except ValueError:
+    print("睡眠时长参数应为整数，\n请修改配置后再使用")
     exit()
 
 
@@ -65,6 +77,13 @@ def display_welcome():
 
 # 机器人登录
 itchat.auto_login(loginCallback=display_welcome, enableCmdQR=2, hotReload=True, statusStorageDir='itchat.pkl')
+
+
+# 专门用于发送提示的函数
+def hint(text: str, msgbox_title: str):
+    print(msgbox_title + ": " + text)
+    itchat.send(text, YOURSELF)
+    MessageBox(0, text, msgbox_title, MB_OK)
 
 
 # 提取该消息所在群聊的群用户名，它是一串类似哈希、随时改变的 string，
@@ -97,12 +116,15 @@ def get_target_group_username(msg, working_mode):
 
 
 def send_file(target_group_user_name, working_mode):
+    """负责发送文件的函数。其返回值的意义为：
+    True：发送成功
+    False：文件未找到，导致发送失败，此时应发送图片提示"""
     if not working_mode == "yesterday":
         path = (DAILY_REPORT_FOLDER + '\\' +  # 文件夹路径
                 # 文件名规范：4位年2位月2位日-每日汇报.pdf
-                datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y%m%d') + "-每日汇报.pdf")
+                datetime.now(timezone('Asia/Shanghai')).strftime('%Y%m%d') + "-每日汇报.pdf")
     else:
-        yesterday = datetime.now(pytz.timezone('Asia/Shanghai')) - timedelta(days=1)
+        yesterday = datetime.now(timezone('Asia/Shanghai')) - timedelta(days=1)
         path = (DAILY_REPORT_FOLDER + '\\' +  # 文件夹路径
                 # 文件名规范：4位年2位月2位日-每日汇报.pdf
                 yesterday.strftime('%Y%m%d') + "-每日汇报.pdf")
@@ -110,22 +132,9 @@ def send_file(target_group_user_name, working_mode):
         test = open(path)
         test.close()
         itchat.send('@fil@%s' % path, target_group_user_name)
-        hint("已将文件发送到指定的群：%s" % TARGET_GROUP, "每日汇报小助手-发送成功")
-        # 如果不是补交作业的话，让小助手休息四个小时，此时正常来讲应该已经到第二天了
-        if not working_mode == "yesterday":
-            sleep(4 * HOURS)
+        return True
     except FileNotFoundError:
-        if working_mode == "myself":
-            image_path = PROMPT_MYSELF
-            itchat.send('@img@%s' % image_path, YOURSELF)
-        elif working_mode == "yesterday":
-            image_path = PROMPT_YESTERDAY
-            itchat.send('@img@%s' % image_path, YOURSELF)
-        elif working_mode == "others":
-            image_path = PROMPT_OTHERS
-            itchat.send('@img@%s' % image_path, YOURSELF)
-        else:
-            hint("工作模式参数有误，无法发送提示图片", "每日汇报小助手提醒")
+        return False
 
 
 # 工作逻辑
@@ -139,7 +148,10 @@ def upload_files_actively(msg):
         working_mode = "myself"
         get_target_group = get_target_group_username(msg, working_mode)
         if get_target_group[0]:  # Flag 为真，表示拿到了目标群聊
-            send_file(get_target_group[1], working_mode)
+            if send_file(get_target_group[1], working_mode):
+                hint("已将文件发送到指定的群：%s" % TARGET_GROUP, "每日汇报小助手-发送成功")
+            else:
+                itchat.send('@img@%s' % PROMPT_MYSELF, YOURSELF)
         else:
             hint("未找到目标群聊，请检查程序问题", "每日汇报小助手提醒")
     elif msg["ToUserName"] == YOURSELF and msg["Text"] in [
@@ -149,7 +161,10 @@ def upload_files_actively(msg):
         working_mode = "yesterday"
         get_target_group = get_target_group_username(msg, working_mode)
         if get_target_group[0]:  # Flag 为真，表示拿到了目标群聊
-            send_file(get_target_group[1], working_mode)
+            if send_file(get_target_group[1], working_mode):
+                hint("已将文件发送到指定的群：%s" % TARGET_GROUP, "每日汇报小助手-发送成功")
+            else:
+                itchat.send('@img@%s' % PROMPT_YESTERDAY, YOURSELF)
         else:
             hint("未找到目标群聊，请检查程序问题", "每日汇报小助手提醒")
 
@@ -159,13 +174,17 @@ def upload_files_actively(msg):
 def upload_files_when_prompted(msg):
     working_mode = "others"
     current_time = [
-        datetime.now(pytz.timezone('Asia/Shanghai')).hour,
-        datetime.now(pytz.timezone('Asia/Shanghai')).minute
+        datetime.now(timezone('Asia/Shanghai')).hour,
+        datetime.now(timezone('Asia/Shanghai')).minute
     ]
-    if current_time[0] >= (time[0] + 1) or (current_time[1] >= time[1] and current_time[0] >= time[0]):
+    if current_time[0] >= (parsed_time[0] + 1) or (current_time[1] >= parsed_time[1] and current_time[0] >= parsed_time[0]):
         get_target_group = get_target_group_username(msg, working_mode)
         if get_target_group[0]:
-            send_file(get_target_group[1], working_mode)
+            if not send_file(get_target_group[1], working_mode):    # 如果没有找到作业，导致没有发出去
+                itchat.send('@img@%s' % PROMPT_OTHERS, YOURSELF)
+            else:   # 如果发出去了
+                hint("已将文件发送到指定的群：%s\n程序将休眠%s小时。" % (TARGET_GROUP, SLEEP_HOURS), "每日汇报小助手-发送成功")
+                sleep(sleep_hours * HOURS)
         else:
             hint("未找到目标群聊，请检查程序问题", "每日汇报小助手提醒")
     else:
