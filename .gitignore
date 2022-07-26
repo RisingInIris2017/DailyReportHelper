@@ -132,4 +132,4 @@ dmypy.json
 /itchat.pkl
 # Local Config
 /config.yml
-/.idea/markdown.xml
+/.idea
